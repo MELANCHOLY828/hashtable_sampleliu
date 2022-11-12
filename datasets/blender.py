@@ -9,9 +9,11 @@ from torchvision import transforms as T
 from .ray_utils import *
 
 class BlenderDataset(Dataset):
-    def __init__(self, root_dir, split='train', img_wh=(800, 800)):
+    def __init__(self, root_dir, split='train', img_wh=(800, 800), xyz_min=None, xyz_max=None):
         self.root_dir = root_dir
         self.split = split
+        self.xyz_min = xyz_min
+        self.xyz_max = xyz_max
         assert img_wh[0] == img_wh[1], 'image width must equal image height!'
         self.img_wh = img_wh
         self.define_transforms()
@@ -44,6 +46,8 @@ class BlenderDataset(Dataset):
             self.poses = []
             self.all_rays = []
             self.all_rgbs = []
+            self.xyz_min = torch.Tensor([np.inf, np.inf, np.inf])
+            self.xyz_max = -self.xyz_min
             for frame in self.meta['frames']:
                 pose = np.array(frame['transform_matrix'])[:3, :4]
                 self.poses += [pose]
@@ -60,21 +64,25 @@ class BlenderDataset(Dataset):
                 self.all_rgbs += [img]   # img [160000,3]   
                 
                 rays_o, rays_d = get_rays(self.directions, c2w) # both (h*w, 3)  [160000, 3]
-
+                pts_nf = torch.stack([rays_o+rays_d*self.near, rays_o+rays_d*self.far])
+                self.xyz_min = torch.minimum(self.xyz_min, pts_nf.amin((0,1)))
+                self.xyz_max = torch.maximum(self.xyz_max, pts_nf.amax((0,1)))
+                
                 self.all_rays += [torch.cat([rays_o, rays_d, 
                                              self.near*torch.ones_like(rays_o[:, :1]),
                                              self.far*torch.ones_like(rays_o[:, :1])],
                                              1)] # (h*w, 8)
-            a = 2
-            # self.all_rays = torch.cat(self.all_rays, 0) # (len(self.meta['frames])*h*w, 3)
-            # self.all_rgbs = torch.cat(self.all_rgbs, 0) # (len(self.meta['frames])*h*w, 3)
-
+            self.all_rays = torch.cat(self.all_rays, 0) # (len(self.meta['frames])*h*w, 3)
+            self.all_rgbs = torch.cat(self.all_rgbs, 0) # (len(self.meta['frames])*h*w, 3)
+    def get_box(self):
+        return self.xyz_min, self.xyz_max
+    
     def define_transforms(self):
         self.transform = T.ToTensor()
 
     def __len__(self):
         if self.split == 'train':
-            return len(self.all_rays)*100   #100*160000
+            return len(self.all_rays)  #100*160000
             # return 100
         if self.split == 'val':
             return 8 # only validate 8 images (to support <=8 gpus)
@@ -82,8 +90,8 @@ class BlenderDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.split == 'train': # use data in the buffers
-            sample = {'rays': self.all_rays[idx%100],
-                      'rgbs': self.all_rgbs[idx%100]}
+            sample = {'rays': self.all_rays[idx],
+                      'rgbs': self.all_rgbs[idx]}
 
         else: # create data for each image separately
             frame = self.meta['frames'][idx]

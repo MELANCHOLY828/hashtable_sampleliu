@@ -33,7 +33,7 @@ from pytorch_lightning.loggers import TestTubeLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-os.environ['CUDA_VISIBLE_DEVICES'] = "0, 1, 2 ,3"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0, 1"
 # os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 
 class NeRFSystem(LightningModule):    
@@ -55,13 +55,14 @@ class NeRFSystem(LightningModule):
 
 
 
-        self.img_pixel = list(range(0, 480 * 640))
+        # self.img_pixel = list(range(0, 480 * 640))
         # random.shuffle(self.img_pixel)
 
-        
+        if self.args.ckpt_path:
+            ckpt = torch.load(self.args.ckpt_path)
       
         self.model_HashSiren = HashSiren(hash_mod = True,
-                 hash_table_length = 188*169*128,
+                 hash_table_length = 171*171*139,
                  in_features = self.args.in_features, 
                  hidden_features = self.args.hidden_features, 
                  hidden_layers = self.args.hidden_layers, 
@@ -69,9 +70,17 @@ class NeRFSystem(LightningModule):
                  outermost_linear=True, 
                  first_omega_0=30, 
                  hidden_omega_0=30.0).cuda()
-        
+        if self.args.ckpt_path:
+            self.model_HashSiren.load_state_dict(ckpt['model_HashSiren'])
+            # self.model_HashSiren.table.requires_grad = False
+            for i in self.model_HashSiren.net.parameters():
+                i.requires_grad = False
         self.models = [self.model_HashSiren]
         self.model_MLP_dir = MLP_dir().cuda()
+        if self.args.ckpt_path:
+            self.model_MLP_dir.load_state_dict(ckpt['model_MLP_dir'])
+            for i in self.model_MLP_dir.parameters():
+                i.requires_grad = False
         self.models += [self.model_MLP_dir]
         
         # self.nerf_coarse = NeRF()
@@ -115,16 +124,28 @@ class NeRFSystem(LightningModule):
         print('world_size:      ', self.world_size)
         print('voxel_size_ratio:', self.voxel_size_ratio)
         
+    def _set_grid_resolution_blender(self, num_voxels, xyz_max, xyz_min):
+        # Determine grid resolution
+        self.num_voxels = num_voxels
+        self.xyz_max = xyz_max
+        self.xyz_min = xyz_min
         
+        self.voxel_size = ((self.xyz_max - self.xyz_min).prod() / num_voxels).pow(1/3)
+        self.world_size = ((self.xyz_max - self.xyz_min) / self.voxel_size).long()
+        print('dvgo: voxel_size      ', self.voxel_size)
+        print('dvgo: world_size      ', self.world_size)
         
     def decode_batch(self, batch):
 
-        rays = batch['rays'] # (B, 9)
-        rgbs = batch['rgbs'] # (B, 3)
-        image_t = batch['image_t']
-        view = batch['view']
+        # rays = batch['rays'] # (B, 9)
+        # rgbs = batch['rgbs'] # (B, 3)
+        # image_t = batch['image_t']
+        # view = batch['view']
         # pixel_choose = batch['pixel_choose']
         # image_t = batch['time']
+        rays = batch['rays'] # (B, 8)
+        rgbs = batch['rgbs'] # (B, 3)
+        return rays, rgbs
 
         return rays, rgbs, image_t, view
     def unpreprocess(self, data, shape=(1,3,1,1)):
@@ -197,8 +218,10 @@ class NeRFSystem(LightningModule):
         train_dir = val_dir = self.args.root_dir
         # self.train_dataset = dataset(root_dir=train_dir, split='train', max_len=-1)
         # self.val_dataset   = dataset(root_dir=val_dir, split='val', max_len=10)
-        self.train_dataset = dataset(root_dir=train_dir, split='train')
-        self.val_dataset   = dataset(root_dir=val_dir, split='val', val_num=2)
+        self.train_dataset = dataset(root_dir=train_dir, split='train', img_wh = self.args.img_wh)
+        self.xyz_min, self.xyz_max = self.train_dataset.get_box()
+        self.grid_bounds = [self.xyz_min.cuda(), self.xyz_max.cuda()]
+        self.val_dataset   = dataset(root_dir=val_dir, split='val', img_wh = self.args.img_wh)
     def configure_optimizers(self):
         self.optimizer = get_optimizer(self.args, self.models)
         # self.optimizer = torch.optim.Adam(list(self.model_HashSiren.parameters()), lr=self.args.lr_NeRF, 
@@ -227,20 +250,23 @@ class NeRFSystem(LightningModule):
         #     random.shuffle(self.img_pixel)
         # iter = self.trainer.current_epoch%300
         
-        batch = batch[0]
+        # batch = batch[0]
 
         # log = {'lr1': get_learning_rate(self.optimizer1),
         #         'lr2': get_learning_rate(self.optimizer2)}
         log = {'lr1': get_learning_rate(self.optimizer)}
-        rays, rgbs, image_t, view = self.decode_batch(batch)
+        rays, rgbs = self.decode_batch(batch)
         # flame = batch['flame']
-        if self.trainer.current_epoch == 0 and batch_nb== 0:
-            self.grid_bounds = batch['grid_bounds']
-            self.grid_bounds[0] = self.grid_bounds[0][0]
-            self.grid_bounds[1] = self.grid_bounds[1][0]
-            xyz_min = self.grid_bounds[0].squeeze()
-            xyz_max = self.grid_bounds[1].squeeze()
-            self._set_grid_resolution(self.args.num_voxels, self.args.mpi_depth, xyz_max, xyz_min)
+        # if self.trainer.current_epoch == 0 and batch_nb== 0:
+        #     self.grid_bounds = batch['grid_bounds']
+        #     self.grid_bounds[0] = self.grid_bounds[0][0]
+        #     self.grid_bounds[1] = self.grid_bounds[1][0]
+        #     xyz_min = self.grid_bounds[0].squeeze()
+        #     xyz_max = self.grid_bounds[1].squeeze()
+        #     self._set_grid_resolution_blender(self.args.num_voxels, xyz_max, xyz_min)
+           
+           
+           
             # self.model_HashSiren.HashTable(self.world_size.prod())
             
         # pixel_choose = self.img_pixel[(iter)*1024 : (iter+1)*1024]
@@ -297,15 +323,16 @@ class NeRFSystem(LightningModule):
         #     self.idx_gpus = (self.idx-2)//4 + 1
         # # self.idx_gpus = self.idx//8
 
-        # self.idx += 1
-        # if self.idx == 1:
-        #     self.idx_gpus = 0
-        # else:
-        #     self.idx_gpus = (self.idx - 2)//8 + 1
-
+        self.idx += 1
+        if self.idx == 1:
+            self.idx_gpus = 0
+        else:
+            self.idx_gpus = (self.idx - 2)//8 + 1
+        if self.trainer.current_epoch == 0 and batch_nb== 0:
+            self._set_grid_resolution_blender(self.args.num_voxels, self.xyz_max, self.xyz_min)
         self.idx_gpus += 1
         
-        rays, rgbs, image_t, view = self.decode_batch(batch)
+        rays, rgbs = self.decode_batch(batch)
         
         
         rays = rays.squeeze() # (H*W, 3) [160000, 8]
@@ -332,7 +359,7 @@ class NeRFSystem(LightningModule):
         # img2 = img2.unsqueeze(0)
         img_vis = torch.cat((img1,img),dim=0).permute(2,0,3,1).reshape(img1.shape[2],-1,3).numpy()
         os.makedirs(f'/data1/liufengyi/get_results/hash_table/val_img/{self.args.exp_name}/',exist_ok=True)
-        imageio.imwrite(f'/data1/liufengyi/get_results/hash_table/val_img/{self.args.exp_name}/{self.idx_gpus:02d}.png', (img_vis*255).astype('uint8'))
+        imageio.imwrite(f'/data1/liufengyi/get_results/hash_table/val_img/{self.args.exp_name}/{self.idx_gpus:02d}_{batch_nb:02d}.png', (img_vis*255).astype('uint8'))
         
 
         
@@ -374,7 +401,7 @@ class NeRFSystem(LightningModule):
         print('Saved checkpoints at', path)
 
 if __name__ == '__main__':
-    with torch.cuda.device(2):
+    with torch.cuda.device(1):
         args = config_parser()
         system = NeRFSystem(args)
         a = os.path.join(f'/data1/liufengyi/get_results/hash_table/checkpoints/{args.exp_name}/ckpts/','{epoch:02d}')
@@ -412,9 +439,9 @@ if __name__ == '__main__':
                         weights_summary=None,
                         progress_bar_refresh_rate=1,
                         #   gpus=args.num_gpus,
-                        gpus=[2],
+                        gpus=[1],
                         distributed_backend='ddp' if args.num_gpus>1 else None,
-                        num_sanity_val_steps = 0,     #训练之前进行校验
+                        num_sanity_val_steps = 1,     #训练之前进行校验
                         check_val_every_n_epoch = 1,   #一个epoch校验一次
                         # val_check_interval=0.1,      #0.1个epoch校验一次
                         precision=16, 
@@ -424,5 +451,5 @@ if __name__ == '__main__':
 
         # pdb.set_trace()
         trainer.fit(system)
-        system.save_ckpt()
+        system.save_ckpt(psnr = 0)
         torch.cuda.empty_cache()
