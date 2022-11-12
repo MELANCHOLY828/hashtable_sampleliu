@@ -38,7 +38,7 @@ def config_parser(cmd=None):
     parser.add_argument('--num_gpus', type=int, default=1,
                         help='number of gpus')
 
-    parser.add_argument('--ckpt_path', type=str, default="/data1/liufengyi/get_results/hash_table/checkpoints/lego/ckpts/HashTable_2.tar",
+    parser.add_argument('--ckpt_path', type=str, default=None,
                         help='pretrained checkpoint path to load')
     parser.add_argument('--prefixes_to_ignore', nargs='+', type=str, default=['loss'],
                         help='the prefixes to ignore in the checkpoint state dict')
