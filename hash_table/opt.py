@@ -4,12 +4,12 @@ def config_parser(cmd=None):
     parser = argparse.ArgumentParser()
     parser = configargparse.ArgumentParser()
     parser.add_argument('--root_dir', type=str,
-                        default='/data1/liufengyi/all_datasets/mvsnerf/nerf_llff_data/fern/',
+                        default='/data1/liufengyi/all_datasets/mvsnerf/nerf_synthetic/nerf_synthetic/lego/',
                         help='root directory of dataset')
-    parser.add_argument('--dataset_name', type=str, default='llff',
-                        choices=['llff', 'facebook_NeRV', 'facebook_NeRV1', 'facebook_grid'],
+    parser.add_argument('--dataset_name', type=str, default='blender',
+                        choices=['blender', 'llff', 'facebook_NeRV', 'facebook_NeRV1', 'facebook_grid'],
                         help='which dataset to train/val')
-    parser.add_argument('--img_wh', nargs="+", type=int, default=[504, 378],
+    parser.add_argument('--img_wh', nargs="+", type=int, default=[400, 400],
                         help='resolution (img_w, img_h) of the image')
     parser.add_argument('--spheric_poses', default=False, action="store_true",
                         help='whether images are taken in spheric poses (for llff)')
@@ -38,7 +38,7 @@ def config_parser(cmd=None):
     parser.add_argument('--num_gpus', type=int, default=1,
                         help='number of gpus')
 
-    parser.add_argument('--ckpt_path', type=str, default="/data1/liufengyi/get_results/non_synchronized_NeRF2/runs_new/train_3th_NeRF/ckpts/epoch=11-val_loss=0.004.ckpt",
+    parser.add_argument('--ckpt_path', type=str, default=None,
                         help='pretrained checkpoint path to load')
     parser.add_argument('--prefixes_to_ignore', nargs='+', type=str, default=['loss'],
                         help='the prefixes to ignore in the checkpoint state dict')
@@ -72,14 +72,14 @@ def config_parser(cmd=None):
                         help='exponent for polynomial learning rate decay')
     ###########################
 
-    parser.add_argument('--exp_name', type=str, default='llff',
+    parser.add_argument('--exp_name', type=str, default='lego_AddFeature_10',
                         help='experiment name')
 
    
     #增加的grid的超参
     parser.add_argument('--num_voxels', type=int, default=160*160*160, help='网格分辨率')
-    parser.add_argument('--mpi_depth', type=int, default=128, help='网格分辨率的z分量')
-    parser.add_argument('--in_features', type=int, default=3, help='hashtable输入维度')
+    # parser.add_argument('--mpi_depth', type=int, default=128, help='网格分辨率的z分量')
+    parser.add_argument('--in_features', type=int, default=10, help='hashtable输入维度')
     parser.add_argument('--hidden_features', type=int, default=64, help='MLP w')
     parser.add_argument('--hidden_layers', type=int, default=2, help='MLP层数')
     parser.add_argument('--out_features', type=int, default=1+27, help='hashtable输出维度')

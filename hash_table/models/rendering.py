@@ -1,7 +1,13 @@
+import os, sys
+# from macpath import split
+parentdir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0,parentdir) 
+print('__file__={0:<35} | __name__={1:<20} | __package__={2:<20}'.format(__file__,__name__,str(__package__)))
 from pyexpat import model
 import torch
 from torchsearchsorted import searchsorted
 import torch.nn.functional as F
+from sh import *
 # from .torchsearchsorted.src.torchsearchsorted import searchsorted
 
 __all__ = ['render_rays']
@@ -715,12 +721,14 @@ def render_grid(models,
                 depth_final: (N_rays) depth map
                 weights: (N_rays, N_samples_): weights of each sample
         """
+        sh_deg = 2
         N_samples_ = feature_coarse.shape[1]   #[32768, 64, 3]
         # Embed directions
         feature_coarse = feature_coarse.view(-1, feature_coarse.shape[-1]) # (N_rays*N_samples_, 3)
         if not weights_only:   #[32768, 27]
             dir_embedded = torch.repeat_interleave(dir_embedded, repeats=N_samples_, dim=0)
                            # (N_rays*N_samples_, 27)  
+            # dir_1 = torch.repeat_interleave(dir_, repeats=N_samples_, dim=0)
         feature_dir = torch.cat([feature_coarse, dir_embedded], 1)
         # rgb = model_MLP_dir(feature_dir)
         # return rgb, rgb, rgb
@@ -732,7 +740,8 @@ def render_grid(models,
             
             feature_dir_ = feature_dir[i:i+chunk]
             out_chunks += [model_MLP_dir(feature_dir_)]   #每个list [1024*32,4] 64个list
-
+        # rgb = eval_sh(sh_deg, feature_coarse.reshape(
+        #         *feature_coarse.shape[:-1],-1, (sh_deg + 1) ** 2), dir_1)
         rgb = torch.cat(out_chunks, 0) #[2097152, 4]
         sigama = sigama_coarse.view(N_rays, N_samples_)
         rgbs= rgb.view(N_rays, N_samples_, 3)
@@ -772,6 +781,7 @@ def render_grid(models,
     # Extract models from lists
     model_HashSiren = models[0]
     model_MLP_dir = models[1]
+    
     embedding_xyz = embeddings[0]
     embedding_dir = embeddings[1]
 
@@ -822,10 +832,16 @@ def render_grid(models,
     sigama_coarse = F.grid_sample(sigama.unsqueeze(0), xyz_coarse_norm.view(1,1,*xyz_coarse_norm.shape), mode='bilinear', align_corners=True).squeeze().unsqueeze(-1)
     feature_coarse = F.grid_sample(feature_.unsqueeze(0), xyz_coarse_norm.view(1,1,*xyz_coarse_norm.shape), mode='bilinear', align_corners=True).squeeze().permute(1,2,0)
     
-    # rgb_coarse = model_MLP_dir(feature_coarse.reshape(-1,27))
-     
-    # result = {'rgb_coarse': rgb_coarse}
-    # return result
+    # if test_time:
+    #     weights_coarse = \
+    #         rendering(sigama_coarse, feature_coarse, rays_d,
+    #                     dir_embedded, z_vals, weights_only=True)
+    #     result = {'opacity_coarse': weights_coarse.sum(1)}
+    # else:
+    #     # t_normalize_coarse = t_normalize.unsqueeze(1).expand(xyz_coarse_sampled.shape)[:,:,-2:-1]
+    #     rgb_coarse, depth_coarse, weights_coarse = \
+    #         rendering(sigama_coarse, feature_coarse, rays_d,
+    #                     dir_embedded, z_vals, weights_only=False)
     if test_time:
         weights_coarse = \
             rendering(model_MLP_dir, sigama_coarse, feature_coarse, rays_d,

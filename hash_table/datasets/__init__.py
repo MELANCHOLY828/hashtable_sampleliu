@@ -10,6 +10,7 @@ from .facebook_resize import FacebookDataset1
 from .facebook_NeRV import FacebookDataset2
 from .facebook_NeRV1 import FacebookDataset3
 from .facebook_grid import FacebookGrid
+from .Blender_VoxGo import *
 dataset_dict = {'blender': BlenderDataset,
                 'llff': LLFFDataset,
                 'blender1':BlenderDataset1,
