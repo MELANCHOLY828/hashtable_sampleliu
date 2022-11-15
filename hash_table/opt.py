@@ -72,14 +72,14 @@ def config_parser(cmd=None):
                         help='exponent for polynomial learning rate decay')
     ###########################
 
-    parser.add_argument('--exp_name', type=str, default='lego_AddFeature_10',
+    parser.add_argument('--exp_name', type=str, default='lego_28_HashMlp-sh',
                         help='experiment name')
 
    
     #增加的grid的超参
     parser.add_argument('--num_voxels', type=int, default=160*160*160, help='网格分辨率')
     # parser.add_argument('--mpi_depth', type=int, default=128, help='网格分辨率的z分量')
-    parser.add_argument('--in_features', type=int, default=10, help='hashtable输入维度')
+    parser.add_argument('--in_features', type=int, default=28, help='hashtable输入维度')
     parser.add_argument('--hidden_features', type=int, default=64, help='MLP w')
     parser.add_argument('--hidden_layers', type=int, default=2, help='MLP层数')
     parser.add_argument('--out_features', type=int, default=1+27, help='hashtable输出维度')

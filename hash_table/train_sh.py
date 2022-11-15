@@ -12,7 +12,7 @@ from datasets import dataset_dict
 import pdb
 # models
 from models.nerf import *
-from models.rendering import render_grid, render_rays, render_rays1, render_rays2
+from models.rendering import render_grid, render_rays, render_rays1, render_rays2, render_sh
 from models.HashSiren import *
 
 # optimizer, scheduler, visualization, NeRV utils
@@ -59,22 +59,21 @@ class NeRFSystem(LightningModule):
         # random.shuffle(self.img_pixel)
 
         if self.args.ckpt_path:
+            print("loading model     ")
             ckpt = torch.load(self.args.ckpt_path)
       
-        self.model_HashSiren = HashSiren(hash_mod = True,
+        self.model_HashSiren = HashMlp(hash_mod = True,
                  hash_table_length = 171*171*139,
                  in_features = self.args.in_features, 
                  hidden_features = self.args.hidden_features, 
                  hidden_layers = self.args.hidden_layers, 
                  out_features = self.args.out_features,
-                 outermost_linear=True, 
-                 first_omega_0=30, 
-                 hidden_omega_0=30.0).cuda()
-        if self.args.ckpt_path:
-            self.model_HashSiren.load_state_dict(ckpt['model_HashSiren'])
-            # self.model_HashSiren.table.requires_grad = False
-            for i in self.model_HashSiren.net.parameters():
-                i.requires_grad = False
+                 outermost_linear=True).cuda()
+        # if self.args.ckpt_path:
+        #     self.model_HashSiren.load_state_dict(ckpt['model_HashSiren'])
+        #     # self.model_HashSiren.table.requires_grad = False
+        #     for i in self.model_HashSiren.net.parameters():
+        #         i.requires_grad = False
                 
         self.models = [self.model_HashSiren]
         # self.models = [self.model_HashSiren]
@@ -191,7 +190,7 @@ class NeRFSystem(LightningModule):
         results = defaultdict(list)
         for i in range(0, B, self.args.chunk):
             rendered_ray_chunks = \
-                render_grid(self.models,
+                render_sh(self.models,
                             self.embeddings,
                             rays[i:i+self.args.chunk],   #[32768, 8]
                             world_size,
@@ -403,7 +402,7 @@ class NeRFSystem(LightningModule):
         print('Saved checkpoints at', path)
 
 if __name__ == '__main__':
-    with torch.cuda.device(1):
+    with torch.cuda.device(0):
         args = config_parser()
         system = NeRFSystem(args)
         a = os.path.join(f'/data1/liufengyi/get_results/hash_table/checkpoints/{args.exp_name}/ckpts/','{epoch:02d}')
@@ -441,7 +440,7 @@ if __name__ == '__main__':
                         weights_summary=None,
                         progress_bar_refresh_rate=1,
                         #   gpus=args.num_gpus,
-                        gpus=[1],
+                        gpus=[0],
                         distributed_backend='ddp' if args.num_gpus>1 else None,
                         num_sanity_val_steps = 1,     #训练之前进行校验
                         check_val_every_n_epoch = 1,   #一个epoch校验一次
