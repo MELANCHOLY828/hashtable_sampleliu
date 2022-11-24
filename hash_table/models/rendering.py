@@ -1,5 +1,6 @@
 import os, sys
 from torch import nn
+from kornia import create_meshgrid
 
 # from macpath import split
 parentdir = os.path.dirname(os.path.abspath(__file__))
@@ -1081,9 +1082,55 @@ def render_sh(models,
     
     output_feature = output_feature.reshape(world_size[2], world_size[1], world_size[0], 28).permute(3,0,1,2)
     sigama = output_feature[0:1]
+    # #创建网格数据
+    # import numpy as np
+    # x = np.linspace(0, world_size[0]-1, world_size[0])
+    # y = np.linspace(0, world_size[1]-1, world_size[1])
+    # z = np.linspace(0, world_size[2]-1, world_size[2])
+    # X, Y, Z = np.meshgrid(x, y, z)
+    # coors = np.concatenate((X[:, :, :, None], Y[:, :, :, None], Z[:, :, :, None]), axis=-1)
+    # sigama1 = sigama.permute(3,2,1,0).cpu().numpy()
+    # coor = np.concatenate((coors,sigama1), axis=-1)
+
+    # coor = coor.reshape(-1,4)
+    # np.savetxt('/data1/liufengyi/all_datasets/1.txt',coor)
+    # from mayavi import mlab
+    # import numpy as np
+    # import pdb
+    # def viz_mayavi(points):
+    #     x = points[:, 2]  # x position of point
+    #     y = points[:, 1]  # y position of point
+    #     z = points[:, 0]  # z position of point
+    #     pdb.set_trace()
+    #     fig = mlab.figure(bgcolor=(0, 0, 0), size=(640, 360)) #指定图片背景和尺寸
+    #     mlab.points3d(x, y, z,
+    #                         points[:, 3],          # Values used for Color，指定颜色变化依据
+    #                         mode="point",
+    #                         colormap='spectral', # 'bone', 'copper', 'gnuplot'
+
+
+    #                         # color=(0, 1, 0),   # 也可以使用固定的RGB值
+
+
+    #                         )
+
+
+    #     mlab.show()
+
+
+    # # points = np.loadtxt("/data1/liufengyi/all_datasets/airplane_0001.txt", delimiter=',')
+
+    # pdb.set_trace()
+    # viz_mayavi(coor)
+    # pdb.set_trace()
+    
+    
+    
     feature_ = output_feature[1:]
     
-    
+    #TV loss
+    tv_sigma = sigama.unsqueeze(0)
+    tv_feature_ = feature_.unsqueeze(0)
     
     
     sigama_coarse = F.grid_sample(sigama.unsqueeze(0), xyz_coarse_norm.view(1,1,*xyz_coarse_norm.shape), mode='bilinear', align_corners=True).squeeze().unsqueeze(-1)
@@ -1111,7 +1158,9 @@ def render_sh(models,
                         dir_embedded, z_vals, weights_only=False)
         result = {'rgb_coarse': rgb_coarse,
                     'depth_coarse': depth_coarse,
-                    'opacity_coarse': weights_coarse.sum(1)
+                    'opacity_coarse': weights_coarse.sum(1),
+                    'tv_sigma' : tv_sigma,
+                    'tv_feature_' : tv_feature_
                     }
     
     

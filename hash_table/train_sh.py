@@ -17,11 +17,10 @@ from models.HashSiren import *
 
 # optimizer, scheduler, visualization, NeRV utils
 from utils import *
-from utils.NeRV import *
 import torch.optim as optim
 
 # losses
-from losses import loss_dict, MSELoss1
+from losses import loss_dict, MSELoss1, TVLoss_3
 import imageio
 # metrics
 from metrics import *
@@ -53,28 +52,43 @@ class NeRFSystem(LightningModule):
         self.img_wh = self.args.img_wh
         self.image_shape = torch.zeros(self.img_wh[1], self.img_wh[0], 3)
 
-
-
+        self.tvloss_sh = TVLoss_3(self.args.TVLoss_weight_SH)
+        self.tvloss_sigma = TVLoss_3(self.args.TVLoss_weight_sigama)
+        
         # self.img_pixel = list(range(0, 480 * 640))
         # random.shuffle(self.img_pixel)
 
-        if self.args.ckpt_path:
-            print("loading model     ")
-            ckpt = torch.load(self.args.ckpt_path)
+        
       
         self.model_HashSiren = HashMlp(hash_mod = True,
-                 hash_table_length = 171*171*139,
+                 hash_table_length = 273*273*223,
                  in_features = self.args.in_features, 
                  hidden_features = self.args.hidden_features, 
                  hidden_layers = self.args.hidden_layers, 
                  out_features = self.args.out_features,
                  outermost_linear=True).cuda()
+        
+        # self.VoxelGrid = VoxelGrid(hash_mod = True,
+        #          hash_table_length = 171*171*139,
+        #          in_features = self.args.in_features, 
+        #          hidden_features = self.args.hidden_features, 
+        #          hidden_layers = self.args.hidden_layers, 
+        #          out_features = self.args.out_features,
+        #          outermost_linear=True).cuda()
+        
+        if self.args.ckpt_path:
+            print("loading model     ")
+            ckpt = torch.load(self.args.ckpt_path)
+            table = ckpt['model_HashSiren']['table']
+            self.model_HashSiren.table.data = table    #加载了HashTable的值
+            self.model_HashSiren.table.requires_grad = False
+
         # if self.args.ckpt_path:
         #     self.model_HashSiren.load_state_dict(ckpt['model_HashSiren'])
         #     # self.model_HashSiren.table.requires_grad = False
         #     for i in self.model_HashSiren.net.parameters():
         #         i.requires_grad = False
-                
+        # self.models = [self.VoxelGrid]
         self.models = [self.model_HashSiren]
         # self.models = [self.model_HashSiren]
         # self.model_MLP_dir = MLP_dir().cuda()
@@ -236,7 +250,7 @@ class NeRFSystem(LightningModule):
                           shuffle=True,
                           num_workers=0,
                         #   batch_size=self.args.batch_size,
-                          batch_size=1024,
+                          batch_size=1024*2,
                           pin_memory=True)
 
     def val_dataloader(self):
@@ -257,6 +271,7 @@ class NeRFSystem(LightningModule):
         #         'lr2': get_learning_rate(self.optimizer2)}
         log = {'lr1': get_learning_rate(self.optimizer)}
         rays, rgbs = self.decode_batch(batch)
+        
         # flame = batch['flame']
         # if self.trainer.current_epoch == 0 and batch_nb== 0:
         #     self.grid_bounds = batch['grid_bounds']
@@ -283,6 +298,9 @@ class NeRFSystem(LightningModule):
         # loss = ls(oyt, torch.ones_like(oyt))
         results = self(rays, self.world_size, self.grid_bounds)
         
+        # tv_sigma = results['tv_sigma']
+        # tv_feature_ = results['tv_feature_']
+        
         
         # print(self.world_size)   
         
@@ -292,7 +310,8 @@ class NeRFSystem(LightningModule):
         # loss = ls(results['rgb_coarse'], torch.ones_like(results['rgb_coarse']))
         # loss = ls(results, torch.ones_like(results))
         
-        log['train/loss'] = loss = self.loss(results, rgbs) 
+        log['train/loss'] = loss = self.loss(results, rgbs)
+        # log['train/loss'] = loss = self.loss(results, rgbs) + self.tvloss_sigma(tv_sigma) + self.tvloss_sh(tv_feature_)
         if torch.any(torch.isnan(loss)):
             pdb.set_trace() 
 
@@ -367,7 +386,7 @@ class NeRFSystem(LightningModule):
         return log
 
     def validation_epoch_end(self, outputs):
-        self.flag_epoch1 += 1 
+        
         # self.point_list = self.list_all_1[(self.flag_epoch1 - 1) * 1024 : self.flag_epoch1 * 1024]
         mean_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         mean_psnr = torch.stack([x['val_psnr'] for x in outputs]).mean()
@@ -385,7 +404,11 @@ class NeRFSystem(LightningModule):
                 idx = self.val_psnr.index(min_psnr)
                 self.val_psnr[idx] = mean_psnr
                 self.save_ckpt(mean_psnr, idx)
-        
+        self.flag_epoch1 += 1 
+        if self.trainer.current_epoch == 1:
+            self.save_ckpt(mean_psnr, "one epoch")
+        if self.trainer.current_epoch == 49:
+            self.PSNR = mean_psnr
         return 
 
     def save_ckpt(self, psnr, name='final'):
@@ -401,6 +424,15 @@ class NeRFSystem(LightningModule):
         torch.save(ckpt, path)
         print('Saved checkpoints at', path)
 
+# 写入json文件
+def write_json_data(path, params):
+    # 使用写模式，名称定义为r
+    #其中路径如果和读json方法中的名称不一致，会重新创建一个名称为该方法中写的文件名
+    json_str=json.dumps(params,indent=4,ensure_ascii=False)
+    with open(path+'record.json', 'w', encoding='utf-8') as json_file:
+        # 将dict写入名称为r的文件中
+        json_file.write(json_str)
+
 if __name__ == '__main__':
     with torch.cuda.device(0):
         args = config_parser()
@@ -409,6 +441,13 @@ if __name__ == '__main__':
         dirpath = f'/data1/liufengyi/get_results/hash_table/checkpoints/{args.exp_name}/ckpts/'
         # filename = '{epoch:02d}'
         filename = '{epoch:02d}-{val_loss:.3f}'
+        import json
+        os.makedirs(dirpath,exist_ok=True)
+        record_code = {
+            'name' : args.exp_name,
+            'description' : "将网格增大为256,28维hash,2048个采样点"
+        }
+        write_json_data(dirpath, record_code)
         # early_stop_callback = (
         #     EarlyStopping(
         #         monitor = 'val/loss_mean',
@@ -428,7 +467,8 @@ if __name__ == '__main__':
             debug=False,
             create_git_tag=False
         )
-
+        
+        
         trainer = Trainer(max_epochs=args.num_epochs,
                         #   automatic_optimization = False,
                         #   checkpoint_callback=checkpoint_callback,
@@ -452,5 +492,5 @@ if __name__ == '__main__':
 
         # pdb.set_trace()
         trainer.fit(system)
-        system.save_ckpt(psnr = 0)
+        system.save_ckpt(psnr = system.PSNR)
         torch.cuda.empty_cache()

@@ -194,7 +194,32 @@ class MlpLayer(nn.Module):
         activate_f = nn.ReLU()
         out = activate_f(self.linear(input))
         return out
+
+
+class VoxelGrid(nn.Module):
+    def __init__(self,
+                 hash_mod,
+                 hash_table_length, 
+                 in_features, 
+                 hidden_features, 
+                 hidden_layers, 
+                 out_features,
+                 outermost_linear=True):
+
+        super().__init__()
+        self.hash_mod = hash_mod
+
+        self.table = torch.nn.Parameter(1e-4 * (torch.rand((hash_table_length,in_features))*2 -1),requires_grad = True)
+        
     
+    def forward(self, coords):
+        if self.hash_mod:
+            output = self.table
+        # output = torch.clamp(output, min = -1.0,max = 1.0)
+
+        return output
+
+
 if __name__ == '__main__':
     print('start')
     hashsiren = HashSiren(
