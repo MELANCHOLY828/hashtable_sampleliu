@@ -4,7 +4,7 @@ def config_parser(cmd=None):
     parser = argparse.ArgumentParser()
     parser = configargparse.ArgumentParser()
     parser.add_argument('--root_dir', type=str,
-                        default='/data1/liufengyi/all_datasets/mvsnerf/nerf_synthetic/nerf_synthetic/lego/',
+                        default='/home/zhangruiqi/zrq_project/nerf-pytorch/data/nerf_synthetic/lego',
                         help='root directory of dataset')
     parser.add_argument('--dataset_name', type=str, default='blender',
                         choices=['blender', 'llff', 'facebook_NeRV', 'facebook_NeRV1', 'facebook_grid'],

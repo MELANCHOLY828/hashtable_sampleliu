@@ -44,7 +44,7 @@ class NeRFSystem(LightningModule):
         self.idx_gpus = -1
         self.loss = loss_dict[args.loss_type]()
        
-
+        self.save_path = '/data/zhangruiqi/lfy/data/results/'
         self.embedding_xyz = Embedding(3, 10)
         self.embedding_dir = Embedding(3, 4) # 4 is the default number
         self.embeddings = [self.embedding_xyz, self.embedding_dir]
@@ -378,8 +378,8 @@ class NeRFSystem(LightningModule):
         img = img.unsqueeze(0)
         # img2 = img2.unsqueeze(0)
         img_vis = torch.cat((img1,img),dim=0).permute(2,0,3,1).reshape(img1.shape[2],-1,3).numpy()
-        os.makedirs(f'/data1/liufengyi/get_results/hash_table/val_img/{self.args.exp_name}/',exist_ok=True)
-        imageio.imwrite(f'/data1/liufengyi/get_results/hash_table/val_img/{self.args.exp_name}/{self.idx_gpus:02d}_{batch_nb:02d}.png', (img_vis*255).astype('uint8'))
+        os.makedirs(f'{self.save_path}/hash_table/val_img/{self.args.exp_name}/',exist_ok=True)
+        imageio.imwrite(f'{self.save_path}/hash_table/val_img/{self.args.exp_name}/{self.idx_gpus:02d}_{batch_nb:02d}.png', (img_vis*255).astype('uint8'))
         
 
         
@@ -413,7 +413,7 @@ class NeRFSystem(LightningModule):
 
     def save_ckpt(self, psnr, name='final'):
         
-        save_dir = f'/data1/liufengyi/get_results/hash_table/checkpoints/{self.args.exp_name}/ckpts/'
+        save_dir = f'{self.save_path}/hash_table/checkpoints/{self.args.exp_name}/ckpts/'
         os.makedirs(save_dir, exist_ok=True)
         path = f'{save_dir}/HashTable_{name}.tar'
         ckpt = {
@@ -434,11 +434,11 @@ def write_json_data(path, params):
         json_file.write(json_str)
 
 if __name__ == '__main__':
-    with torch.cuda.device(0):
+    with torch.cuda.device(1):
         args = config_parser()
         system = NeRFSystem(args)
-        a = os.path.join(f'/data1/liufengyi/get_results/hash_table/checkpoints/{args.exp_name}/ckpts/','{epoch:02d}')
-        dirpath = f'/data1/liufengyi/get_results/hash_table/checkpoints/{args.exp_name}/ckpts/'
+        a = os.path.join(f'{system.save_path}/hash_table/checkpoints/{args.exp_name}/ckpts/','{epoch:02d}')
+        dirpath = f'{system.save_path}/hash_table/checkpoints/{args.exp_name}/ckpts/'
         # filename = '{epoch:02d}'
         filename = '{epoch:02d}-{val_loss:.3f}'
         import json
@@ -462,7 +462,7 @@ if __name__ == '__main__':
                                             #   auto_insert_metric_name=False)
 
         logger = TestTubeLogger(
-            save_dir="/data1/liufengyi/get_results/hash_table/logs",
+            save_dir=f'{system.save_path}/hash_table/logs',
             name=args.exp_name,
             debug=False,
             create_git_tag=False
@@ -480,7 +480,7 @@ if __name__ == '__main__':
                         weights_summary=None,
                         progress_bar_refresh_rate=1,
                         #   gpus=args.num_gpus,
-                        gpus=[0],
+                        gpus=[1],
                         distributed_backend='ddp' if args.num_gpus>1 else None,
                         num_sanity_val_steps = 1,     #训练之前进行校验
                         check_val_every_n_epoch = 1,   #一个epoch校验一次
