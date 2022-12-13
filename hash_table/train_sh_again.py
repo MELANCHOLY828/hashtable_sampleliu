@@ -44,7 +44,7 @@ class NeRFSystem(LightningModule):
         self.idx_gpus = -1
         self.loss = loss_dict[args.loss_type]()
        
-        self.save_path = '/data/zhangruiqi/lfy/data/results/'
+        self.save_path = '/data/liufengyi/Results'
         self.embedding_xyz = Embedding(3, 10)
         self.embedding_dir = Embedding(3, 4) # 4 is the default number
         self.embeddings = [self.embedding_xyz, self.embedding_dir]
@@ -59,13 +59,12 @@ class NeRFSystem(LightningModule):
         # random.shuffle(self.img_pixel)
 
         
-      
+        self.size = [273, 273, 223]
         self.model_HashSiren = HashMlp(hash_mod = True,
                  hash_table_length = 273*273*223,
-                # hash_table_length = 333*184*272,   # x,y,z
-                 in_features = self.args.in_features, 
-                 hidden_features = self.args.hidden_features, 
-                 hidden_layers = self.args.hidden_layers, 
+                 in_features = 28, 
+                 hidden_features = 64, 
+                 hidden_layers = 2, 
                  out_features = self.args.out_features,
                  outermost_linear=True).cuda()
         
@@ -84,38 +83,33 @@ class NeRFSystem(LightningModule):
             # table = ckpt['model_HashSiren']['table']
             # self.model_HashSiren.table.data = table    #加载了HashTable的值
             # self.model_HashSiren.table.requires_grad = False
-            # import numpy as np
-            # world_size = [333,184,272]
-            # x = np.linspace(0, world_size[0]-1, world_size[0])
-            # y = np.linspace(0, world_size[1]-1, world_size[1])
-            # z = np.linspace(0, world_size[2]-1, world_size[2])
-            # xx = np.repeat(x[None, :], len(y), axis=0)  # 第一个None对应Z，第二个None对应Y；所以后面是(len(z), len(y))
-            # xxx = np.repeat(xx[None, :, :], len(z), axis=0)
-            # yy = np.repeat(y[:, None], len(x), axis=1)
-            # yyy = np.repeat(yy[None, :, :], len(z), axis=0)
-            # zz = np.repeat(z[:, None], len(y), axis=1)
-            # zzz = np.repeat(zz[:, :, None], len(x), axis=2)
-            # coors = np.concatenate((zzz[:, :, :, None], yyy[:, :, :, None], xxx[:, :, :, None]), axis=-1)   # 这里zzz, yyy, xxx的顺序别错了，不然不好理解
 
-            # # X, Y, Z = np.meshgrid(x, y, z)
-            # # coors = np.concatenate((X[:, :, :, None], Y[:, :, :, None], Z[:, :, :, None]), axis=-1)
-            # output_feature = self.model_HashSiren(torch.tensor(0).cuda())
-    
-    
-            # output_feature = output_feature.reshape(world_size[2], world_size[1], world_size[0], 28).permute(3,0,1,2).float()
-            # sigama = output_feature[0:1]
-            # sigama1 = sigama.permute(1,2,3,0).cpu().detach().numpy()
-            # # sigama1 = sigama.permute(3,2,1,0).cpu().detach().numpy()
-            # coor = np.concatenate((coors,sigama1), axis=-1)
+        #改变box范围
+        output_feature = self.model_HashSiren(torch.tensor(0).cuda())
+        output_feature = output_feature.reshape(self.size[2], self.size[1], self.size[0], 28).permute(3,0,1,2).float()
+        sigama = output_feature[0:1]
+        import numpy as np
+        x = np.linspace(0, self.size[0]-1, self.size[0])
+        y = np.linspace(0, self.size[1]-1, self.size[1])
+        z = np.linspace(0, self.size[2]-1, self.size[2])
+        xx = np.repeat(x[None, :], len(y), axis=0)  # 第一个None对应Z，第二个None对应Y；所以后面是(len(z), len(y))
+        xxx = np.repeat(xx[None, :, :], len(z), axis=0)
+        yy = np.repeat(y[:, None], len(x), axis=1)
+        yyy = np.repeat(yy[None, :, :], len(z), axis=0)
+        zz = np.repeat(z[:, None], len(y), axis=1)
+        zzz = np.repeat(zz[:, :, None], len(x), axis=2)
+        coors = np.concatenate((zzz[:, :, :, None], yyy[:, :, :, None], xxx[:, :, :, None]), axis=-1)
+        sigama1 = sigama.permute(1,2,3,0).cpu().detach().numpy()
+        coor = np.concatenate((coors,sigama1), axis=-1)
 
-            # coor = coor.reshape(-1,4)
-            # np.savetxt('/data/zhangruiqi/lfy/data/second.txt',coor)
-        # if self.args.ckpt_path:
-        #     self.model_HashSiren.load_state_dict(ckpt['model_HashSiren'])
-        #     # self.model_HashSiren.table.requires_grad = False
-        #     for i in self.model_HashSiren.net.parameters():
-        #         i.requires_grad = False
-        # self.models = [self.VoxelGrid]
+        coor = coor.reshape(-1,4)
+        coor[:,3] = np.int64(coor[:,3]>0)
+        index =np.array(coor[:,3], dtype=bool)
+        coor1 = coor[index,:3]
+        self.box_min = coor1.min(0)   #z y x
+        self.box_max = coor1.max(0)
+        self.box_min = self.box_min[::-1]
+        self.box_max = self.box_max[::-1]
         self.models = [self.model_HashSiren]
         # self.models = [self.model_HashSiren]
         # self.model_MLP_dir = MLP_dir().cuda()
@@ -144,9 +138,9 @@ class NeRFSystem(LightningModule):
         self.flag_epoch1 = 0
         # self.flag_epoch2 = 0
 
-        self.list_all = list(range(0, 480*640))
-        self.list_all_1 = self.list_all[:]
-        random.shuffle(self.list_all_1)
+        # self.list_all = list(range(0, 480*640))
+        # self.list_all_1 = self.list_all[:]
+        # random.shuffle(self.list_all_1)
         
         self.val_psnr = []
         
@@ -198,32 +192,7 @@ class NeRFSystem(LightningModule):
         std = torch.tensor([1 / 0.229, 1 / 0.224, 1 / 0.225]).view(*shape).to(device)
 
         return (data - mean) / std
-    # def forward(self, rays, t_normalize = 0):
-    #     """Do batched inference on rays using chunk."""
-    #     B = rays.shape[0]  #160000
-    #     results = defaultdict(list)
-    #     for i in range(0, B, self.args.chunk):
-    #         rendered_ray_chunks = \
-    #             render_grid(self.models,
-    #                         self.embeddings,
-    #                         rays[i:i+self.args.chunk],   #[32768, 8]
-    #                         self.args.N_samples,
-    #                         self.args.use_disp,
-    #                         self.args.perturb,
-    #                         self.args.noise_std,
-    #                         self.args.N_importance,
-    #                         self.args.chunk, # chunk size is effective in val mode  32768
-    #                         self.train_dataset.white_back, 
-    #                         t_normalize = t_normalize,
-    #                         test_time=False
-    #                         )
 
-    #         for k, v in rendered_ray_chunks.items():
-    #             results[k] += [v]   #k  'rgb_coarse'  v为数值
-
-    #     for k, v in results.items():
-    #         results[k] = torch.cat(v, 0)
-    #     return results
     
     def forward(self, rays, world_size, grid_bounds):
         """Do batched inference on rays using chunk."""
@@ -231,7 +200,7 @@ class NeRFSystem(LightningModule):
         results = defaultdict(list)
         for i in range(0, B, self.args.chunk):
             rendered_ray_chunks = \
-                render_sh(self.models,
+                render_sh_sample(self.models,
                             self.embeddings,
                             rays[i:i+self.args.chunk],   #[32768, 8]
                             world_size,
@@ -262,8 +231,19 @@ class NeRFSystem(LightningModule):
         # self.val_dataset   = dataset(root_dir=val_dir, split='val', max_len=10)
         self.train_dataset = dataset(root_dir=train_dir, split='train', img_wh = self.args.img_wh)
         self.xyz_min, self.xyz_max = self.train_dataset.get_box()
-        self.grid_bounds = [self.xyz_min.cuda(), self.xyz_max.cuda()]
-        
+        self.coor_min = (self.box_min - np.array((0,0,0)))/np.array((self.size[0]-1,self.size[1]-1,self.size[2]-1))*(self.xyz_max - self.xyz_min).numpy() + self.xyz_min.numpy()
+        self.coor_max = (self.box_max - np.array((0,0,0)))/np.array((self.size[0]-1,self.size[1]-1,self.size[2]-1))*(self.xyz_max - self.xyz_min).numpy() + self.xyz_min.numpy()
+        self.grid_bounds = [torch.from_numpy(self.coor_min).cuda(), torch.from_numpy(self.coor_max).cuda()]        
+        self._set_grid_resolution_blender(self.args.num_voxels, torch.from_numpy(self.coor_max).cuda(), torch.from_numpy(self.coor_min).cuda())
+        # self.grid_bounds = [self.xyz_min.cuda(), self.xyz_max.cuda()]
+        self.model_HashSiren = HashMlp(hash_mod = True,
+                 hash_table_length = self.world_size.prod(),
+                 in_features = self.args.in_features, 
+                 hidden_features = self.args.hidden_features, 
+                 hidden_layers = self.args.hidden_layers, 
+                 out_features = self.args.out_features,
+                 outermost_linear=True).cuda()
+        self.models = [self.model_HashSiren]
         self.val_dataset   = dataset(root_dir=val_dir, split='val', img_wh = self.args.img_wh)
     def configure_optimizers(self):
         self.optimizer = get_optimizer(self.args, self.models)
@@ -342,7 +322,7 @@ class NeRFSystem(LightningModule):
         # log['train/loss'] = loss = self.loss(results, rgbs) + self.tvloss_sigma(tv_sigma) + self.tvloss_sh(tv_feature_)
         if torch.any(torch.isnan(loss)):
             pdb.set_trace() 
-
+            results = self(rays, self.world_size, self.grid_bounds)
             print("loss:", self.loss(results, rgbs))
 
 
@@ -462,7 +442,7 @@ def write_json_data(path, params):
         json_file.write(json_str)
 
 if __name__ == '__main__':
-    with torch.cuda.device(1):
+    with torch.cuda.device(0):
         args = config_parser()
         system = NeRFSystem(args)
         a = os.path.join(f'{system.save_path}/hash_table/checkpoints/{args.exp_name}/ckpts/','{epoch:02d}')
@@ -473,7 +453,7 @@ if __name__ == '__main__':
         os.makedirs(dirpath,exist_ok=True)
         record_code = {
             'name' : args.exp_name,
-            'description' : "将网格增大为256,28维hash,2048个采样点,sample策略为自己写的那个"
+            'description' : "网格256,3维hash,2048个采样点,再次采样,把box变小,出了box直接设置为1,MLP为1*48"
         }
         write_json_data(dirpath, record_code)
         # early_stop_callback = (
@@ -508,7 +488,7 @@ if __name__ == '__main__':
                         weights_summary=None,
                         progress_bar_refresh_rate=1,
                         #   gpus=args.num_gpus,
-                        gpus=[1],
+                        gpus=[0],
                         distributed_backend='ddp' if args.num_gpus>1 else None,
                         num_sanity_val_steps = 1,     #训练之前进行校验
                         check_val_every_n_epoch = 1,   #一个epoch校验一次

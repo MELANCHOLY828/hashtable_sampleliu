@@ -31,12 +31,11 @@ class HashSiren(nn.Module):
         if outermost_linear:
             final_linear = nn.Linear(hidden_features, out_features)
             
-            # with torch.no_grad():
-            #     final_linear.weight.uniform_(-np.sqrt(6 / hidden_features) / hidden_omega_0,
-            #                                   np.sqrt(6 / hidden_features) / hidden_omega_0)
+            with torch.no_grad():
+                final_linear.weight.uniform_(-np.sqrt(6 / hidden_features) / hidden_omega_0,
+                                              np.sqrt(6 / hidden_features) / hidden_omega_0)
 
             self.net.append(final_linear)
-            # self.net.append(MlpLayer(hidden_features, out_features))
         else:
             self.net.append(SineLayer(hidden_features, out_features,
                                       is_first=False, omega_0=hidden_omega_0))
@@ -49,7 +48,7 @@ class HashSiren(nn.Module):
             output = self.net(self.table[:,:])
         else:
             output = self.net(coords)
-        output = torch.clamp(output, min = -1.0,max = 1.0)
+        # output = torch.clamp(output, min = -1.0,max = 1.0)
 
         return output
 
