@@ -195,6 +195,9 @@ class NeRFSystem(LightningModule):
 
     
     def forward(self, rays, world_size, grid_bounds):
+        import time
+        # torch.cuda.synchronize()
+        # start = time.time()
         """Do batched inference on rays using chunk."""
         B = rays.shape[0]  #160000
         results = defaultdict(list)
@@ -214,12 +217,21 @@ class NeRFSystem(LightningModule):
                             self.train_dataset.white_back, 
                             test_time=False
                             )
-
+            # torch.cuda.synchronize()
+            # start1 = time.time()
+            # print("forward2 :",start1-start)
             for k, v in rendered_ray_chunks.items():
                 results[k] += [v]   #k  'rgb_coarse'  v为数值
-
+            # torch.cuda.synchronize()
+            # start2 = time.time()
+            # print("xunhuan  :",start2-start)
+        # torch.cuda.synchronize()
+        # start3 = time.time()
         for k, v in results.items():
             results[k] = torch.cat(v, 0)
+        # torch.cuda.synchronize()
+        # start4 = time.time()
+        # print("forward3 :",start4-start3)
         return results
 
     def prepare_data(self):
@@ -304,8 +316,13 @@ class NeRFSystem(LightningModule):
         # oyt = self.model_MLP_dir(out1)
         # ls = MSELoss1()
         # loss = ls(oyt, torch.ones_like(oyt))
+        # import time
+        # torch.cuda.synchronize()
+        # start = time.time()  
         results = self(rays, self.world_size, self.grid_bounds)
-        
+        # torch.cuda.synchronize()
+        # end = time.time()  
+        # print("forward  :",end-start)
         # tv_sigma = results['tv_sigma']
         # tv_feature_ = results['tv_feature_']
         
@@ -442,7 +459,7 @@ def write_json_data(path, params):
         json_file.write(json_str)
 
 if __name__ == '__main__':
-    with torch.cuda.device(0):
+    with torch.cuda.device(1):
         args = config_parser()
         system = NeRFSystem(args)
         a = os.path.join(f'{system.save_path}/hash_table/checkpoints/{args.exp_name}/ckpts/','{epoch:02d}')
@@ -488,7 +505,7 @@ if __name__ == '__main__':
                         weights_summary=None,
                         progress_bar_refresh_rate=1,
                         #   gpus=args.num_gpus,
-                        gpus=[0],
+                        gpus=[1],
                         distributed_backend='ddp' if args.num_gpus>1 else None,
                         num_sanity_val_steps = 1,     #训练之前进行校验
                         check_val_every_n_epoch = 1,   #一个epoch校验一次

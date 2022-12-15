@@ -1377,6 +1377,9 @@ def render_sh_sample(models,
 
 
     # Extract models from lists
+    # import time
+    # torch.cuda.synchronize()
+    # start = time.time()
     model_HashSiren = models[0]
     
     embedding_xyz = embeddings[0]
@@ -1455,11 +1458,18 @@ def render_sh_sample(models,
     xyz_coarse_sampled = rays_o.unsqueeze(1) + \
                          rays_d.unsqueeze(1) * z_vals.unsqueeze(2) # (N_rays, N_samples, 3)  [32768, 64, 3]
                          
-                        
+             
     # xyz_coarse_norm = ((xyz_coarse_sampled - xyz_min) / (xyz_max - xyz_min)).flip((-1,)) * 2 - 1
     xyz_coarse_norm = ((((xyz_coarse_sampled - xyz_min) / (xyz_max - xyz_min))).flip((-1,)) * 2 - 1).float()
-    output_feature = model_HashSiren(rays_o)
     
+    
+    # torch.cuda.synchronize()
+    # start1 = time.time()  
+    # print("others   :",start1-start)
+    output_feature = model_HashSiren(rays_o)
+    # torch.cuda.synchronize()
+    # start2 = time.time()
+    # print("model    :",start2-start1)
     
     output_feature = output_feature.reshape(world_size[2], world_size[1], world_size[0], 28).permute(3,0,1,2).float()
     sigama = output_feature[0:1]
@@ -1517,7 +1527,9 @@ def render_sh_sample(models,
     
     sigama_coarse = F.grid_sample(sigama.unsqueeze(0), xyz_coarse_norm.view(1,1,*xyz_coarse_norm.shape), mode='bilinear', align_corners=True).squeeze().unsqueeze(-1)
     feature_coarse = F.grid_sample(feature_.unsqueeze(0), xyz_coarse_norm.view(1,1,*xyz_coarse_norm.shape), mode='bilinear', align_corners=True).squeeze().permute(1,2,0)
-    
+    # torch.cuda.synchronize()
+    # start3 = time.time()
+    # print("sampling :",start3-start2)
     # if test_time:
     #     weights_coarse = \
     #         rendering(sigama_coarse, feature_coarse, rays_d,
@@ -1528,6 +1540,8 @@ def render_sh_sample(models,
     #     rgb_coarse, depth_coarse, weights_coarse = \
     #         rendering(sigama_coarse, feature_coarse, rays_d,
     #                     dir_embedded, z_vals, weights_only=False)
+    # torch.cuda.synchronize()
+    # start4 = time.time() 
     if test_time:
         weights_coarse = \
             rendering(sigama_coarse, feature_coarse, rays_d,
@@ -1539,11 +1553,13 @@ def render_sh_sample(models,
             rendering(sigama_coarse, feature_coarse, rays_d,
                         dir_embedded, z_vals, weights_only=False)
         rgb_coarse[~box_index] = 1
+        # end = time.time() 
+        # print("rendering:",end-start4)
         result = {'rgb_coarse': rgb_coarse,
-                    'depth_coarse': depth_coarse,
-                    'opacity_coarse': weights_coarse.sum(1),
-                    'tv_sigma' : tv_sigma,
-                    'tv_feature_' : tv_feature_
+                    # 'depth_coarse': depth_coarse,
+                    # 'opacity_coarse': weights_coarse.sum(1),
+                    # 'tv_sigma' : tv_sigma,
+                    # 'tv_feature_' : tv_feature_
                     }
     
     

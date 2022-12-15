@@ -77,7 +77,7 @@ def config_parser(cmd=None):
     # parser.add_argument('--exp_name', type=str, default='lego_64_HashMlp-sh-2048-MLP(4*128)',
     #                     help='experiment name')
     
-    parser.add_argument('--exp_name', type=str, default='sample_again_MLP_1*48',
+    parser.add_argument('--exp_name', type=str, default='NoUse',
                         help='experiment name')
 
     #TV loss
@@ -87,7 +87,7 @@ def config_parser(cmd=None):
     #增加的grid的超参
     parser.add_argument('--num_voxels', type=int, default=256*256*256, help='网格分辨率')
     # parser.add_argument('--mpi_depth', type=int, default=128, help='网格分辨率的z分量')
-    parser.add_argument('--in_features', type=int, default=3, help='hashtable输入维度')
+    parser.add_argument('--in_features', type=int, default=28, help='hashtable输入维度')
     parser.add_argument('--hidden_features', type=int, default=48, help='MLP w')
     parser.add_argument('--hidden_layers', type=int, default=1, help='MLP层数')
     parser.add_argument('--out_features', type=int, default=1+27, help='hashtable输出维度')
